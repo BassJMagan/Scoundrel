@@ -53,6 +53,7 @@ class GameState:
     log: List[str] = None
     last_played: Optional[Card] = None
     prev_health_before_last_heart: Optional[int] = None
+    last_remaining: Optional[Card] = None
     state: str = "playing"  # playing | won | lost
     score: Optional[int] = None
 
@@ -375,10 +376,8 @@ def sum_remaining_monsters(gs: GameState) -> int:
 def compute_victory_score(gs: GameState) -> int:
     base = max(gs.health, 0)
     bonus = 0
-    # “If your life is 20, and your last card was a health potion,
-    # your score is your life + the value of that potion.”
-    if gs.last_played and gs.last_played.suit == "hearts" and gs.health >= gs.max_health:
-        bonus = gs.last_played.value
+    if gs.last_remaining and gs.last_remaining.suit == "hearts" and gs.health >= gs.max_health:
+        bonus = gs.last_remaining.value
     return base + bonus
 
 def compute_defeat_score(gs: GameState) -> int:
@@ -397,6 +396,8 @@ def fill_room_to_four(gs: GameState, carry: Optional[List[Card]] = None) -> None
     while len(next_room) < 4 and next_deck:
         next_room.append(next_deck.pop(0))
     if len(next_room) < 4:
+        if carry:
+            gs.last_remaining = carry[0]
         if next_room:
             gs.discard = next_room + gs.discard
         gs.deck = []
@@ -974,7 +975,7 @@ def _run_tests():
             gs = GameState(deck=[], room=[], discard=[], state='won')
             gs.health = 20
             gs.max_health = 20
-            gs.last_played = h5
+            gs.last_remaining = h5
             self.assertEqual(compute_victory_score(gs), 25)
 
     class TestPointsLogged(unittest.TestCase):
