@@ -56,6 +56,7 @@ class GameState:
     last_remaining: Optional[Card] = None
     state: str = "playing"  # playing | won | lost
     score: Optional[int] = None
+    flee_prompt: bool = False
 
     def __post_init__(self):
         if self.log is None:
@@ -514,7 +515,7 @@ def on_click_card(gs: GameState, idx: int) -> bool:
     return True
 
 
-def flee_room(gs: GameState) -> None:
+def flee_room(gs: GameState, direction: Optional[str] = None) -> None:
     if gs.state != "playing":
         return
     if gs.ran_last_room:
@@ -523,12 +524,23 @@ def flee_room(gs: GameState) -> None:
     if cards_played_this_room(gs) > 0:
         append_log(gs, "You can only flee at the start of a room before any card is played.")
         return
-    next_deck = gs.deck + gs.room
+    next_deck = gs.deck[:]
+    if direction == 'left':
+        # left to right: append as is
+        next_deck += gs.room[:]
+        dir_str = "left-to-right"
+    elif direction == 'right':
+        # right to left: append reversed
+        next_deck += gs.room[::-1]
+        dir_str = "right-to-left"
+    else:
+        next_deck += gs.room[:]
+        dir_str = "default"
     gs.deck = next_deck
     gs.room = []
     gs.ran_last_room = True
     gs.healed_this_room = False
-    append_log(gs, "You fled. New room.")
+    append_log(gs, f"You fled ({dir_str} scoop). New room.")
     fill_room_to_four(gs, [])
 
 # -------------------------------------------------------------
@@ -691,6 +703,17 @@ def run_game():
             draw_text(surface, line, x + pad, ty, color=(226, 232, 240), font=FONT_SM)
             ty += FONT_SM.get_height()+2
 
+    def draw_flee_prompt(surface):
+        if not gs.flee_prompt:
+            return
+        text = "Scoop direction: [LEFT] left-to-right or [RIGHT] right-to-left"
+        img = FONT_LG.render(text, True, COL_ACCENT)
+        r = img.get_rect(center=(W // 2, H - 100))
+        bg = r.inflate(30, 20)
+        pygame.draw.rect(surface, COL_PANEL, bg, border_radius=12)
+        pygame.draw.rect(surface, COL_BORDER, bg, width=2, border_radius=12)
+        surface.blit(img, r)
+
     # Window (resizable)
     screen = pygame.display.set_mode((W, H), pygame.RESIZABLE)
     pygame.display.set_caption("Scoundrel – Pygame")
@@ -737,8 +760,24 @@ def run_game():
                     gs = start_new_run()
                     reset_slots_from_room()
                 elif event.key == pygame.K_f:
-                    flee_room(gs)
-                    reset_slots_from_room()
+                    pressed = pygame.key.get_pressed()
+                    if pressed[pygame.K_LEFT]:
+                        flee_room(gs, 'left')
+                        reset_slots_from_room()
+                    elif pressed[pygame.K_RIGHT]:
+                        flee_room(gs, 'right')
+                        reset_slots_from_room()
+                    else:
+                        gs.flee_prompt = True
+                elif gs.flee_prompt:
+                    if event.key == pygame.K_LEFT:
+                        flee_room(gs, 'left')
+                        reset_slots_from_room()
+                        gs.flee_prompt = False
+                    elif event.key == pygame.K_RIGHT:
+                        flee_room(gs, 'right')
+                        reset_slots_from_room()
+                        gs.flee_prompt = False
                 elif event.key == pygame.K_a:
                     gs.combat_mode = "auto"
                 elif event.key == pygame.K_w:
@@ -850,6 +889,7 @@ def run_game():
             pts = gs.score if gs.score is not None else (compute_victory_score(gs) if gs.state=='won' else compute_defeat_score(gs))
             draw_text(screen, f"Run Result: {'Victory' if gs.state=='won' else 'Defeat'}  |  Points: {pts}  |  Press [N] for New Run", res_rect.x + 16, res_rect.y + 8)
 
+        draw_flee_prompt(screen)
 
         # Draw tooltip last so it stays on top
         if hovered_tip:
