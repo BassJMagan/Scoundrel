@@ -205,35 +205,49 @@ def dfs_can_win(initial: List[Card], stack_limit: Optional[int] = None) -> Tuple
                 memo[key] = True
                 return True
 
-        # Build action list in good order
+        # Build indices
         heart_idx = [i for i, c in enumerate(s.room) if c.suit == "hearts"]
         dia_idx = [i for i, c in enumerate(s.room) if c.suit == "diamonds"]
         mon_idx = [i for i, c in enumerate(s.room) if c.suit in ("spades", "clubs")]
 
-        # Hearts: biggest first if available and not healed
-        if not s.healed and heart_idx:
-            heart_idx.sort(key=lambda i: s.room[i].value, reverse=True)
-            for i in heart_idx:
-                ns = SimState(deck=s.deck[:], room=s.room[:], health=min(20, s.health + s.room[i].value), weapon=s.weapon, chain=s.chain, healed=True, ran=s.ran, plays=s.plays + 1)
+        small_val = 3
+        small_idx = [i for i in mon_idx if s.room[i].value <= small_val]
+        large_idx = [i for i in mon_idx if s.room[i].value > small_val]
+        small_legal = [i for i in small_idx if can_use_weapon_on(s.weapon, s.chain, s.room[i].value)]
+        large_legal = [i for i in large_idx if can_use_weapon_on(s.weapon, s.chain, s.room[i].value)]
+
+        # Preferred fists on small (when chain high or none)
+        if s.chain is None or s.chain > 4:
+            small_sorted = sorted(small_idx, key=lambda i: s.room[i].value)
+            for i in small_sorted:
+                val = s.room[i].value
+                hp = s.health - val
+                if hp <= 0:
+                    continue
+                ns = SimState(deck=s.deck[:], room=s.room[:], health=hp, weapon=s.weapon, chain=s.chain, healed=s.healed, ran=s.ran, plays=s.plays + 1)
                 ns.room.pop(i)
                 if try_dfs(ns):
                     memo[key] = True
                     return True
 
-        # Better weapons first
-        better_dias = [i for i in dia_idx if s.room[i].value > s.weapon]
-        better_dias.sort(key=lambda i: s.room[i].value, reverse=True)
-        for i in better_dias:
-            ns = SimState(deck=s.deck[:], room=s.room[:], health=s.health, weapon=s.room[i].value, chain=None, healed=s.healed, ran=s.ran, plays=s.plays + 1)
-            ns.room.pop(i)
-            if try_dfs(ns):
-                memo[key] = True
-                return True
+        # Preferred weapon on small (when chain low)
+        if s.chain is not None and s.chain <= 4:
+            small_legal_sorted = sorted(small_legal, key=lambda i: s.room[i].value, reverse=True)
+            for i in small_legal_sorted:
+                val = s.room[i].value
+                dmg = max(0, val - s.weapon)
+                hp = s.health - dmg
+                if hp <= 0:
+                    continue
+                ns = SimState(deck=s.deck[:], room=s.room[:], health=hp, weapon=s.weapon, chain=val, healed=s.healed, ran=s.ran, plays=s.plays + 1)
+                ns.room.pop(i)
+                if try_dfs(ns):
+                    memo[key] = True
+                    return True
 
-        # Weapon kills, highest legal first
-        legal = [i for i in mon_idx if can_use_weapon_on(s.weapon, s.chain, s.room[i].value)]
-        legal.sort(key=lambda i: s.room[i].value, reverse=True)
-        for i in legal:
+        # Weapon on large, highest first
+        large_legal_sorted = sorted(large_legal, key=lambda i: s.room[i].value, reverse=True)
+        for i in large_legal_sorted:
             val = s.room[i].value
             dmg = max(0, val - s.weapon)
             hp = s.health - dmg
@@ -245,9 +259,9 @@ def dfs_can_win(initial: List[Card], stack_limit: Optional[int] = None) -> Tuple
                 memo[key] = True
                 return True
 
-        # Punches: smallest first
-        mons_sorted = sorted(mon_idx, key=lambda i: s.room[i].value)
-        for i in mons_sorted:
+        # Fists on large, smallest first
+        large_sorted = sorted(large_idx, key=lambda i: s.room[i].value)
+        for i in large_sorted:
             val = s.room[i].value
             hp = s.health - val
             if hp <= 0:
@@ -258,8 +272,59 @@ def dfs_can_win(initial: List[Card], stack_limit: Optional[int] = None) -> Tuple
                 memo[key] = True
                 return True
 
-        # Extra hearts after healed count as plays
+        # Secondary for small
+        if s.chain is None or s.chain > 4:
+            # Secondary: weapon on small, highest first
+            small_legal_sorted = sorted(small_legal, key=lambda i: s.room[i].value, reverse=True)
+            for i in small_legal_sorted:
+                val = s.room[i].value
+                dmg = max(0, val - s.weapon)
+                hp = s.health - dmg
+                if hp <= 0:
+                    continue
+                ns = SimState(deck=s.deck[:], room=s.room[:], health=hp, weapon=s.weapon, chain=val, healed=s.healed, ran=s.ran, plays=s.plays + 1)
+                ns.room.pop(i)
+                if try_dfs(ns):
+                    memo[key] = True
+                    return True
+        else:
+            # Secondary: fist on small, smallest first
+            small_sorted = sorted(small_idx, key=lambda i: s.room[i].value)
+            for i in small_sorted:
+                val = s.room[i].value
+                hp = s.health - val
+                if hp <= 0:
+                    continue
+                ns = SimState(deck=s.deck[:], room=s.room[:], health=hp, weapon=s.weapon, chain=s.chain, healed=s.healed, ran=s.ran, plays=s.plays + 1)
+                ns.room.pop(i)
+                if try_dfs(ns):
+                    memo[key] = True
+                    return True
+
+        # Hearts: optimal fit first if not healed
+        if not s.healed and heart_idx:
+            needed = 20 - s.health
+            heart_idx.sort(key=lambda i: (s.room[i].value > needed, abs(s.room[i].value - needed), s.room[i].value))
+            for i in heart_idx:
+                ns = SimState(deck=s.deck[:], room=s.room[:], health=min(20, s.health + s.room[i].value), weapon=s.weapon, chain=s.chain, healed=True, ran=s.ran, plays=s.plays + 1)
+                ns.room.pop(i)
+                if try_dfs(ns):
+                    memo[key] = True
+                    return True
+
+        # Better weapons (upgrades)
+        better_dias = [i for i in dia_idx if s.room[i].value > s.weapon]
+        better_dias.sort(key=lambda i: s.room[i].value, reverse=True)
+        for i in better_dias:
+            ns = SimState(deck=s.deck[:], room=s.room[:], health=s.health, weapon=s.room[i].value, chain=None, healed=s.healed, ran=s.ran, plays=s.plays + 1)
+            ns.room.pop(i)
+            if try_dfs(ns):
+                memo[key] = True
+                return True
+
+        # Extra hearts after healed
         if s.healed and heart_idx:
+            heart_idx.sort(key=lambda i: s.room[i].value)
             for i in heart_idx:
                 ns = SimState(deck=s.deck[:], room=s.room[:], health=s.health, weapon=s.weapon, chain=s.chain, healed=True, ran=s.ran, plays=s.plays + 1)
                 ns.room.pop(i)
