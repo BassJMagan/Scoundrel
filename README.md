@@ -5,4 +5,4 @@ This is a pygame port of the game Scoundrel which follows all of the rules in th
 <img width="706" height="850" alt="image" src="https://github.com/user-attachments/assets/bb6b7956-e723-4b5e-b2fa-4b28fa04d56c" />
 <img width="693" height="833" alt="image" src="https://github.com/user-attachments/assets/f7b4571f-97c8-43f2-99b4-53ec106924e6" />
 
-To play simply have a Python installation with pygame installed. If you do not have Pygame installed type this in terminal: **pip install pygame** then simply launch the Scoundrel.py to play.
+To play simply have a Python installation with pygame installed. If you do not have Pygame installed type this in terminal: **pip install pygame** then simply launch the Scoundrel.py to play. It will always have an AI bruteforce through and try to find a winning condition before handing you a shuffled deck, so every deck given is "winnable", but whether you win or not depends on your planning/strategy through the roguelike card dungeon.
